@@ -1,0 +1,36 @@
+{
+  "name": "reminder-window-focus",
+  "version": "1.0.0",
+  "description": "Obsidian plugin to focus window when reminder appears",
+  "main": "main.js",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc -noEmit -skipLibCheck && node esbuild.config.mjs production",
+    "version": "node version-bump.mjs && git add manifest.json versions.json"
+  },
+  "author": "rockbenben",
+  "license": "MIT",
+  "keywords": [
+    "obsidian",
+    "obsidian-plugin",
+    "obsidian-reminder"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/rockbenben/reminder-window-focus.git"
+  },
+  "homepage": "https://github.com/rockbenben/reminder-window-focus",
+  "bugs": {
+    "url": "https://github.com/rockbenben/reminder-window-focus/issues"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.0",
+    "@typescript-eslint/eslint-plugin": "^8.44.0",
+    "@typescript-eslint/parser": "^8.44.0",
+    "builtin-modules": "^5.0.0",
+    "esbuild": "^0.25.10",
+    "obsidian": "^1.8.7",
+    "tslib": "^2.8.1",
+    "typescript": "^5.9.2"
+  }
+}

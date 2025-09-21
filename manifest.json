@@ -1,0 +1,10 @@
+{
+  "id": "reminder-window-focus",
+  "name": "Reminder Window Focus",
+  "version": "1.0.0",
+  "minAppVersion": "0.15.0",
+  "description": "Automatically focus and bring the window to the front when reminder notifications appear / 当提醒弹窗出现时自动将窗口置顶并聚焦",
+  "author": "rockbenben",
+  "authorUrl": "https://github.com/rockbenben",
+  "isDesktopOnly": true
+}
