@@ -151,8 +151,12 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
     );
   }
   checkForReminderModal(element) {
-    const isReminderModal = element.classList.contains("modal-container") && (element.innerHTML.includes("reminder") || element.innerHTML.includes("\u63D0\u9192") || element.querySelector(".reminder-modal") !== null || element.querySelector("[data-reminder]") !== null || // 检查是否包含 Snooze 按钮（reminder 插件的特征）
-    element.innerHTML.includes("Snooze") || element.innerHTML.includes("Done"));
+    const textContent = element.textContent || "";
+    const hasSnoozeButton = this.hasButtonWithText(element, "Snooze");
+    const hasDoneButton = this.hasButtonWithText(element, "Done");
+    const isReminderModal = element.classList.contains("modal-container") && (textContent.includes("reminder") || textContent.includes("\u63D0\u9192") || element.querySelector(".reminder-modal") !== null || element.querySelector("[data-reminder]") !== null || // 检查是否包含 Snooze 按钮（reminder 插件的特征）
+    textContent.includes("Snooze") || textContent.includes("Done") || // 检查按钮元素
+    element.querySelector('button[aria-label*="Snooze"]') !== null || element.querySelector('button[aria-label*="Done"]') !== null || hasSnoozeButton || hasDoneButton);
     if (isReminderModal) {
       this.debug("Detected reminder modal");
       this.handleReminderModal(element);
@@ -197,11 +201,27 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
     }
     const textContent = element.textContent?.substring(0, 100) || "";
     const className = element.className || "";
-    const innerHTML = element.innerHTML.substring(0, 200);
-    const contentHash = this.simpleHash(textContent + className + innerHTML);
+    const tagStructure = this.getElementStructure(element);
+    const contentHash = this.simpleHash(textContent + className + tagStructure);
     const modalId = `reminder-modal-${contentHash}`;
     element.dataset.modalId = modalId;
     return modalId;
+  }
+  getElementStructure(element) {
+    const tagName = element.tagName.toLowerCase();
+    const attributeInfo = Array.from(element.attributes).slice(0, 5).map((attr) => `${attr.name}="${attr.value.substring(0, 20)}"`).join(" ");
+    const childTags = Array.from(element.children).slice(0, 5).map((child) => child.tagName.toLowerCase()).join(",");
+    return `${tagName}[${attributeInfo}]>{${childTags}}`;
+  }
+  hasButtonWithText(element, text) {
+    const buttons = element.querySelectorAll("button");
+    for (let i = 0; i < buttons.length; i++) {
+      const button = buttons[i];
+      if (button.textContent?.includes(text)) {
+        return true;
+      }
+    }
+    return false;
   }
   simpleHash(str) {
     let hash = 0;
@@ -235,37 +255,42 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
   async ensureWindowVisible() {
     return new Promise((resolve) => {
       window.focus();
-      if (window.require) {
-        const { remote } = window.require("electron");
-        if (remote) {
-          const currentWindow = remote.getCurrentWindow();
-          if (currentWindow) {
-            let needsActivation = false;
-            if (currentWindow.isMinimized()) {
-              currentWindow.restore();
-              this.debug("Window restored from minimized state");
-              needsActivation = true;
-            }
-            if (!currentWindow.isVisible()) {
-              currentWindow.show();
-              this.debug("Window made visible");
-              needsActivation = true;
-            }
-            if (!currentWindow.isFocused()) {
-              this.debug("Window is not focused, bringing to front");
-              needsActivation = true;
-            }
-            if (needsActivation) {
-              if (!currentWindow.isAlwaysOnTop()) {
-                currentWindow.setAlwaysOnTop(true);
-                setTimeout(() => {
-                  currentWindow.setAlwaysOnTop(false);
+      const electronWindow = window;
+      if (electronWindow.require) {
+        try {
+          const { remote } = electronWindow.require("electron");
+          if (remote) {
+            const currentWindow = remote.getCurrentWindow();
+            if (currentWindow) {
+              let needsActivation = false;
+              if (currentWindow.isMinimized()) {
+                currentWindow.restore();
+                this.debug("Window restored from minimized state");
+                needsActivation = true;
+              }
+              if (!currentWindow.isVisible()) {
+                currentWindow.show();
+                this.debug("Window made visible");
+                needsActivation = true;
+              }
+              if (!currentWindow.isFocused()) {
+                this.debug("Window is not focused, bringing to front");
+                needsActivation = true;
+              }
+              if (needsActivation) {
+                if (!currentWindow.isAlwaysOnTop()) {
+                  currentWindow.setAlwaysOnTop(true);
+                  setTimeout(() => {
+                    currentWindow.setAlwaysOnTop(false);
+                    currentWindow.focus();
+                    resolve();
+                  }, 200);
+                } else {
                   currentWindow.focus();
-                  resolve();
-                }, 200);
+                  setTimeout(resolve, 100);
+                }
               } else {
-                currentWindow.focus();
-                setTimeout(resolve, 100);
+                resolve();
               }
             } else {
               resolve();
@@ -273,7 +298,8 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
           } else {
             resolve();
           }
-        } else {
+        } catch (error) {
+          this.debug("Failed to access Electron remote:", error);
           resolve();
         }
       } else {
@@ -340,7 +366,8 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
   getLanguage() {
     if (this.settings.language === "zh") return "zh";
     if (this.settings.language === "en") return "en";
-    const obsidianLang = this.app.vault?.config?.language;
+    const obsidianApp = this.app;
+    const obsidianLang = obsidianApp.vault?.config?.language;
     const systemLang = navigator.language.toLowerCase();
     if (obsidianLang?.includes("zh") || systemLang.includes("zh")) {
       return "zh";

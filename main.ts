@@ -1,5 +1,33 @@
 import { App, Plugin, PluginSettingTab, Setting, Modal, Notice } from "obsidian";
 
+// 定义 Electron 相关的接口
+interface ElectronWindow extends Window {
+  require?: (module: string) => any;
+}
+
+interface ElectronRemote {
+  getCurrentWindow(): ElectronBrowserWindow;
+}
+
+interface ElectronBrowserWindow {
+  isMinimized(): boolean;
+  restore(): void;
+  isVisible(): boolean;
+  show(): void;
+  isFocused(): boolean;
+  isAlwaysOnTop(): boolean;
+  setAlwaysOnTop(flag: boolean): void;
+  focus(): void;
+}
+
+interface ObsidianApp extends App {
+  vault: {
+    config?: {
+      language?: string;
+    };
+  } & App["vault"];
+}
+
 // 定义翻译键类型
 type TranslationKey =
   | "pluginName"
@@ -188,15 +216,26 @@ export default class ReminderFocusPlugin extends Plugin {
   private checkForReminderModal(element: HTMLElement) {
     // 检查是否是 reminder 插件的弹窗
     // 特征：包含 "reminder" 相关的类名或内容
+    const textContent = element.textContent || "";
+
+    // 检查按钮元素中是否包含特定文本
+    const hasSnoozeButton = this.hasButtonWithText(element, "Snooze");
+    const hasDoneButton = this.hasButtonWithText(element, "Done");
+
     const isReminderModal =
       element.classList.contains("modal-container") &&
-      (element.innerHTML.includes("reminder") ||
-        element.innerHTML.includes("提醒") ||
+      (textContent.includes("reminder") ||
+        textContent.includes("提醒") ||
         element.querySelector(".reminder-modal") !== null ||
         element.querySelector("[data-reminder]") !== null ||
         // 检查是否包含 Snooze 按钮（reminder 插件的特征）
-        element.innerHTML.includes("Snooze") ||
-        element.innerHTML.includes("Done"));
+        textContent.includes("Snooze") ||
+        textContent.includes("Done") ||
+        // 检查按钮元素
+        element.querySelector('button[aria-label*="Snooze"]') !== null ||
+        element.querySelector('button[aria-label*="Done"]') !== null ||
+        hasSnoozeButton ||
+        hasDoneButton);
 
     if (isReminderModal) {
       this.debug("Detected reminder modal");
@@ -258,16 +297,46 @@ export default class ReminderFocusPlugin extends Plugin {
     // 基于元素内容和结构生成稳定的ID
     const textContent = element.textContent?.substring(0, 100) || "";
     const className = element.className || "";
-    const innerHTML = element.innerHTML.substring(0, 200);
+    // 使用标签名和属性而不是innerHTML来生成ID
+    const tagStructure = this.getElementStructure(element);
 
     // 生成基于内容的哈希ID（简化版）
-    const contentHash = this.simpleHash(textContent + className + innerHTML);
+    const contentHash = this.simpleHash(textContent + className + tagStructure);
     const modalId = `reminder-modal-${contentHash}`;
 
     // 将ID存储到元素上，便于后续识别
     element.dataset.modalId = modalId;
 
     return modalId;
+  }
+
+  private getElementStructure(element: HTMLElement): string {
+    // 安全地获取元素结构信息，不使用innerHTML
+    const tagName = element.tagName.toLowerCase();
+    const attributeInfo = Array.from(element.attributes)
+      .slice(0, 5) // 限制属性数量以避免过长
+      .map((attr) => `${attr.name}="${attr.value.substring(0, 20)}"`)
+      .join(" ");
+
+    // 获取子元素信息而不是完整HTML
+    const childTags = Array.from(element.children)
+      .slice(0, 5) // 限制子元素数量
+      .map((child) => child.tagName.toLowerCase())
+      .join(",");
+
+    return `${tagName}[${attributeInfo}]>{${childTags}}`;
+  }
+
+  private hasButtonWithText(element: HTMLElement, text: string): boolean {
+    // 安全地检查按钮中是否包含特定文本
+    const buttons = element.querySelectorAll("button");
+    for (let i = 0; i < buttons.length; i++) {
+      const button = buttons[i];
+      if (button.textContent?.includes(text)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private simpleHash(str: string): string {
@@ -318,55 +387,61 @@ export default class ReminderFocusPlugin extends Plugin {
       window.focus();
 
       // 如果在 Electron 环境中，使用更强大的方法
-      if ((window as any).require) {
-        const { remote } = (window as any).require("electron");
-        if (remote) {
-          const currentWindow = remote.getCurrentWindow();
-          if (currentWindow) {
-            let needsActivation = false;
+      const electronWindow = window as ElectronWindow;
+      if (electronWindow.require) {
+        try {
+          const { remote }: { remote: ElectronRemote } = electronWindow.require("electron");
+          if (remote) {
+            const currentWindow = remote.getCurrentWindow();
+            if (currentWindow) {
+              let needsActivation = false;
 
-            // 如果窗口最小化，先还原
-            if (currentWindow.isMinimized()) {
-              currentWindow.restore();
-              this.debug("Window restored from minimized state");
-              needsActivation = true;
-            }
+              // 如果窗口最小化，先还原
+              if (currentWindow.isMinimized()) {
+                currentWindow.restore();
+                this.debug("Window restored from minimized state");
+                needsActivation = true;
+              }
 
-            // 如果窗口不可见，显示窗口
-            if (!currentWindow.isVisible()) {
-              currentWindow.show();
-              this.debug("Window made visible");
-              needsActivation = true;
-            }
+              // 如果窗口不可见，显示窗口
+              if (!currentWindow.isVisible()) {
+                currentWindow.show();
+                this.debug("Window made visible");
+                needsActivation = true;
+              }
 
-            // 如果窗口不在前台（被其他窗口遮盖），激活它
-            if (!currentWindow.isFocused()) {
-              this.debug("Window is not focused, bringing to front");
-              needsActivation = true;
-            }
+              // 如果窗口不在前台（被其他窗口遮盖），激活它
+              if (!currentWindow.isFocused()) {
+                this.debug("Window is not focused, bringing to front");
+                needsActivation = true;
+              }
 
-            if (needsActivation) {
-              // 短暂置顶确保窗口在最前面
-              if (!currentWindow.isAlwaysOnTop()) {
-                currentWindow.setAlwaysOnTop(true);
-                // 等待置顶完成后恢复状态并resolve
-                setTimeout(() => {
-                  currentWindow.setAlwaysOnTop(false);
-                  currentWindow.focus(); // 确保获得焦点
-                  resolve();
-                }, 200);
+              if (needsActivation) {
+                // 短暂置顶确保窗口在最前面
+                if (!currentWindow.isAlwaysOnTop()) {
+                  currentWindow.setAlwaysOnTop(true);
+                  // 等待置顶完成后恢复状态并resolve
+                  setTimeout(() => {
+                    currentWindow.setAlwaysOnTop(false);
+                    currentWindow.focus(); // 确保获得焦点
+                    resolve();
+                  }, 200);
+                } else {
+                  currentWindow.focus();
+                  setTimeout(resolve, 100);
+                }
               } else {
-                currentWindow.focus();
-                setTimeout(resolve, 100);
+                // 窗口已经在前台，直接resolve
+                resolve();
               }
             } else {
-              // 窗口已经在前台，直接resolve
               resolve();
             }
           } else {
             resolve();
           }
-        } else {
+        } catch (error) {
+          this.debug("Failed to access Electron remote:", error);
           resolve();
         }
       } else {
@@ -454,7 +529,8 @@ export default class ReminderFocusPlugin extends Plugin {
     if (this.settings.language === "en") return "en";
 
     // 自动检测语言
-    const obsidianLang = (this.app as any).vault?.config?.language;
+    const obsidianApp = this.app as ObsidianApp;
+    const obsidianLang = obsidianApp.vault?.config?.language;
     const systemLang = navigator.language.toLowerCase();
 
     if (obsidianLang?.includes("zh") || systemLang.includes("zh")) {
