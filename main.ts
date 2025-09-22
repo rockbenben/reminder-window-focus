@@ -1,8 +1,8 @@
-import { App, Plugin, PluginSettingTab, Setting, Modal, Notice } from "obsidian";
+import { App, Plugin, PluginSettingTab, Setting, Notice } from "obsidian";
 
 // 定义 Electron 相关的接口
 interface ElectronWindow extends Window {
-  require?: (module: string) => any;
+  require?: <T = unknown>(module: string) => T;
 }
 
 interface ElectronRemote {
@@ -30,9 +30,6 @@ interface ObsidianApp extends App {
 
 // 定义翻译键类型
 type TranslationKey =
-  | "pluginName"
-  | "enableFocus"
-  | "enableFocusDesc"
   | "focusInterval"
   | "focusIntervalDesc"
   | "detectionInterval"
@@ -63,9 +60,6 @@ type Translations = {
 // 多语言支持
 const translations: Translations = {
   en: {
-    pluginName: "Reminder Window Focus",
-    enableFocus: "Enable window focus on reminder",
-    enableFocusDesc: "Automatically focus and bring Obsidian to front when reminder appears",
     focusInterval: "Minimum focus interval (seconds)",
     focusIntervalDesc: "Minimum time between two consecutive window focus actions",
     detectionInterval: "Detection interval (milliseconds)",
@@ -85,9 +79,6 @@ const translations: Translations = {
     invalidDetectionInterval: "Please enter a valid number for detection interval (100ms or higher)",
   },
   zh: {
-    pluginName: "提醒窗口置顶",
-    enableFocus: "启用提醒窗口置顶",
-    enableFocusDesc: "当检测到提醒弹窗时，自动将 Obsidian 窗口置顶并聚焦",
     focusInterval: "最小聚焦间隔（秒）",
     focusIntervalDesc: "两次窗口置顶之间的最小时间间隔",
     detectionInterval: "检测间隔（毫秒）",
@@ -109,7 +100,6 @@ const translations: Translations = {
 };
 
 interface ReminderFocusSettings {
-  enableFocus: boolean;
   focusInterval: number;
   detectionInterval: number; // 检测间隔（毫秒）
   language: "auto" | "zh" | "en";
@@ -117,7 +107,6 @@ interface ReminderFocusSettings {
 }
 
 const DEFAULT_SETTINGS: ReminderFocusSettings = {
-  enableFocus: true,
   focusInterval: 60,
   detectionInterval: 10000, // 默认每10秒检测一次
   language: "auto",
@@ -133,7 +122,7 @@ export default class ReminderFocusPlugin extends Plugin {
   public t!: (key: TranslationKey) => string;
 
   // Debug logging method
-  private debug(message: string, ...args: any[]) {
+  private debug(message: string, ...args: unknown[]) {
     if (this.settings?.debugMode) {
       console.log(`[Reminder Focus] ${message}`, ...args);
     }
@@ -178,8 +167,6 @@ export default class ReminderFocusPlugin extends Plugin {
   private setupModalDetection() {
     // 监听 DOM 变化以检测新的弹窗
     this.modalObserver = new MutationObserver((mutations) => {
-      if (!this.settings.enableFocus) return;
-
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
           if (node instanceof HTMLElement) {
@@ -197,20 +184,22 @@ export default class ReminderFocusPlugin extends Plugin {
 
     // 定时检测机制
     this.detectionTimer = window.setInterval(() => {
-      if (this.settings.enableFocus) {
-        this.checkAllModals();
-      }
+      this.checkAllModals();
     }, this.settings.detectionInterval);
+    // 确保卸载时自动清理
+    this.registerInterval(this.detectionTimer);
 
     // 同时监听 Obsidian 的 Modal 打开事件
     this.registerEvent(
       this.app.workspace.on("window-open", (leaf, win) => {
-        if (!this.settings.enableFocus) return;
         setTimeout(() => {
           this.checkAllModals();
         }, 100);
       })
     );
+
+    // 初始立即检查一次，避免首次漏检
+    this.checkAllModals();
   }
 
   private checkForReminderModal(element: HTMLElement) {
@@ -329,7 +318,7 @@ export default class ReminderFocusPlugin extends Plugin {
 
   private hasButtonWithText(element: HTMLElement, text: string): boolean {
     // 安全地检查按钮中是否包含特定文本
-    const buttons = element.querySelectorAll("button");
+    const buttons = element.querySelectorAll<HTMLButtonElement>("button");
     for (let i = 0; i < buttons.length; i++) {
       const button = buttons[i];
       if (button.textContent?.includes(text)) {
@@ -390,7 +379,8 @@ export default class ReminderFocusPlugin extends Plugin {
       const electronWindow = window as ElectronWindow;
       if (electronWindow.require) {
         try {
-          const { remote }: { remote: ElectronRemote } = electronWindow.require("electron");
+          const electron = electronWindow.require<{ remote?: ElectronRemote }>("electron");
+          const remote = electron?.remote;
           if (remote) {
             const currentWindow = remote.getCurrentWindow();
             if (currentWindow) {
@@ -452,43 +442,15 @@ export default class ReminderFocusPlugin extends Plugin {
   }
 
   private focusModalElement(modalElement: HTMLElement) {
-    // 尝试找到弹窗中可聚焦的元素
-    const focusableElements = modalElement.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-
-    if (focusableElements.length > 0) {
-      // 优先聚焦第一个按钮或输入元素
-      const firstButton = modalElement.querySelector("button");
-      const firstInput = modalElement.querySelector("input, textarea");
-
-      let targetElement: HTMLElement | null = null;
-
-      if (firstButton) {
-        targetElement = firstButton as HTMLElement;
-        this.debug("Focusing first button in modal");
-      } else if (firstInput) {
-        targetElement = firstInput as HTMLElement;
-        this.debug("Focusing first input in modal");
-      } else {
-        targetElement = focusableElements[0] as HTMLElement;
-        this.debug("Focusing first focusable element in modal");
-      }
-
-      if (targetElement) {
-        // 添加重试机制，确保聚焦成功
-        this.focusWithRetry(targetElement, 3);
-      }
-    } else {
-      // 如果没有可聚焦元素，至少让弹窗容器获得焦点
+    // 聚焦整个弹窗容器
+    if (!modalElement.hasAttribute("tabindex")) {
       modalElement.setAttribute("tabindex", "-1");
-      this.focusWithRetry(modalElement, 3);
-      this.debug("Focusing modal container");
     }
+    this.focusWithRetry(modalElement, 3);
+    this.debug("Focusing modal container");
 
     // 滚动到弹窗位置，确保用户能看到
-    modalElement.scrollIntoView({
-      behavior: "smooth",
-      block: "center",
-    });
+    modalElement.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
   private async focusWithRetry(element: HTMLElement, maxRetries: number) {
@@ -575,10 +537,8 @@ class ReminderFocusSettingTab extends PluginSettingTab {
   }
 
   display(): void {
-    const { containerEl } = this;
+    let { containerEl } = this;
     containerEl.empty();
-
-    containerEl.createEl("h2", { text: this.plugin.t("pluginName") });
 
     // 语言选择
     new Setting(containerEl)
@@ -599,22 +559,11 @@ class ReminderFocusSettingTab extends PluginSettingTab {
           })
       );
 
-    // 启用窗口置顶
-    new Setting(containerEl)
-      .setName(this.plugin.t("enableFocus"))
-      .setDesc(this.plugin.t("enableFocusDesc"))
-      .addToggle((toggle) =>
-        toggle.setValue(this.plugin.settings.enableFocus).onChange(async (value) => {
-          this.plugin.settings.enableFocus = value;
-          await this.plugin.saveSettings();
-        })
-      );
-
-    // 最小聚焦间隔
+    // 最小聚焦间隔（数字输入）
     new Setting(containerEl)
       .setName(this.plugin.t("focusInterval"))
       .setDesc(this.plugin.t("focusIntervalDesc"))
-      .addText((text) =>
+      .addText((text) => {
         text
           .setPlaceholder("60")
           .setValue(String(this.plugin.settings.focusInterval))
@@ -626,14 +575,19 @@ class ReminderFocusSettingTab extends PluginSettingTab {
             } else {
               new Notice(this.plugin.t("invalidInterval"));
             }
-          })
-      );
+          });
+        // 使用数字输入体验
+        const input = text.inputEl;
+        input.type = "number";
+        input.min = "1";
+        input.step = "1";
+      });
 
-    // 检测间隔
+    // 检测间隔（数字输入）
     new Setting(containerEl)
       .setName(this.plugin.t("detectionInterval"))
       .setDesc(this.plugin.t("detectionIntervalDesc"))
-      .addText((text) =>
+      .addText((text) => {
         text
           .setPlaceholder("1000")
           .setValue(String(this.plugin.settings.detectionInterval))
@@ -647,8 +601,13 @@ class ReminderFocusSettingTab extends PluginSettingTab {
             } else {
               new Notice(this.plugin.t("invalidDetectionInterval"));
             }
-          })
-      );
+          });
+        // 使用数字输入体验
+        const input = text.inputEl;
+        input.type = "number";
+        input.min = "100";
+        input.step = "100";
+      });
 
     // 调试模式
     new Setting(containerEl)

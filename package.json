@@ -1,6 +1,6 @@
 {
   "name": "reminder-window-focus",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "description": "Obsidian plugin to focus window when reminder appears",
   "main": "main.js",
   "scripts": {

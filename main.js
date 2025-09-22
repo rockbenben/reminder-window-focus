@@ -31,9 +31,6 @@ module.exports = __toCommonJS(main_exports);
 var import_obsidian = require("obsidian");
 var translations = {
   en: {
-    pluginName: "Reminder Window Focus",
-    enableFocus: "Enable window focus on reminder",
-    enableFocusDesc: "Automatically focus and bring Obsidian to front when reminder appears",
     focusInterval: "Minimum focus interval (seconds)",
     focusIntervalDesc: "Minimum time between two consecutive window focus actions",
     detectionInterval: "Detection interval (milliseconds)",
@@ -53,9 +50,6 @@ var translations = {
     invalidDetectionInterval: "Please enter a valid number for detection interval (100ms or higher)"
   },
   zh: {
-    pluginName: "\u63D0\u9192\u7A97\u53E3\u7F6E\u9876",
-    enableFocus: "\u542F\u7528\u63D0\u9192\u7A97\u53E3\u7F6E\u9876",
-    enableFocusDesc: "\u5F53\u68C0\u6D4B\u5230\u63D0\u9192\u5F39\u7A97\u65F6\uFF0C\u81EA\u52A8\u5C06 Obsidian \u7A97\u53E3\u7F6E\u9876\u5E76\u805A\u7126",
     focusInterval: "\u6700\u5C0F\u805A\u7126\u95F4\u9694\uFF08\u79D2\uFF09",
     focusIntervalDesc: "\u4E24\u6B21\u7A97\u53E3\u7F6E\u9876\u4E4B\u95F4\u7684\u6700\u5C0F\u65F6\u95F4\u95F4\u9694",
     detectionInterval: "\u68C0\u6D4B\u95F4\u9694\uFF08\u6BEB\u79D2\uFF09",
@@ -76,7 +70,6 @@ var translations = {
   }
 };
 var DEFAULT_SETTINGS = {
-  enableFocus: true,
   focusInterval: 60,
   detectionInterval: 1e4,
   // 默认每10秒检测一次
@@ -123,7 +116,6 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
   }
   setupModalDetection() {
     this.modalObserver = new MutationObserver((mutations) => {
-      if (!this.settings.enableFocus) return;
       mutations.forEach((mutation) => {
         mutation.addedNodes.forEach((node) => {
           if (node instanceof HTMLElement) {
@@ -137,18 +129,17 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
       subtree: true
     });
     this.detectionTimer = window.setInterval(() => {
-      if (this.settings.enableFocus) {
-        this.checkAllModals();
-      }
+      this.checkAllModals();
     }, this.settings.detectionInterval);
+    this.registerInterval(this.detectionTimer);
     this.registerEvent(
       this.app.workspace.on("window-open", (leaf, win) => {
-        if (!this.settings.enableFocus) return;
         setTimeout(() => {
           this.checkAllModals();
         }, 100);
       })
     );
+    this.checkAllModals();
   }
   checkForReminderModal(element) {
     const textContent = element.textContent || "";
@@ -258,7 +249,8 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
       const electronWindow = window;
       if (electronWindow.require) {
         try {
-          const { remote } = electronWindow.require("electron");
+          const electron = electronWindow.require("electron");
+          const remote = electron?.remote;
           if (remote) {
             const currentWindow = remote.getCurrentWindow();
             if (currentWindow) {
@@ -308,33 +300,12 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
     });
   }
   focusModalElement(modalElement) {
-    const focusableElements = modalElement.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])');
-    if (focusableElements.length > 0) {
-      const firstButton = modalElement.querySelector("button");
-      const firstInput = modalElement.querySelector("input, textarea");
-      let targetElement = null;
-      if (firstButton) {
-        targetElement = firstButton;
-        this.debug("Focusing first button in modal");
-      } else if (firstInput) {
-        targetElement = firstInput;
-        this.debug("Focusing first input in modal");
-      } else {
-        targetElement = focusableElements[0];
-        this.debug("Focusing first focusable element in modal");
-      }
-      if (targetElement) {
-        this.focusWithRetry(targetElement, 3);
-      }
-    } else {
+    if (!modalElement.hasAttribute("tabindex")) {
       modalElement.setAttribute("tabindex", "-1");
-      this.focusWithRetry(modalElement, 3);
-      this.debug("Focusing modal container");
     }
-    modalElement.scrollIntoView({
-      behavior: "smooth",
-      block: "center"
-    });
+    this.focusWithRetry(modalElement, 3);
+    this.debug("Focusing modal container");
+    modalElement.scrollIntoView({ behavior: "smooth", block: "center" });
   }
   async focusWithRetry(element, maxRetries) {
     for (let i = 0; i < maxRetries; i++) {
@@ -399,9 +370,8 @@ var ReminderFocusSettingTab = class extends import_obsidian.PluginSettingTab {
     this.plugin = plugin;
   }
   display() {
-    const { containerEl } = this;
+    let { containerEl } = this;
     containerEl.empty();
-    containerEl.createEl("h2", { text: this.plugin.t("pluginName") });
     new import_obsidian.Setting(containerEl).setName(this.plugin.t("language")).setDesc(this.plugin.t("languageDesc")).addDropdown(
       (dropdown) => dropdown.addOption("auto", this.plugin.t("auto")).addOption("zh", this.plugin.t("chinese")).addOption("en", this.plugin.t("english")).setValue(this.plugin.settings.language).onChange(async (value) => {
         this.plugin.settings.language = value;
@@ -410,14 +380,8 @@ var ReminderFocusSettingTab = class extends import_obsidian.PluginSettingTab {
         new import_obsidian.Notice(this.plugin.t("settingsSaved"));
       })
     );
-    new import_obsidian.Setting(containerEl).setName(this.plugin.t("enableFocus")).setDesc(this.plugin.t("enableFocusDesc")).addToggle(
-      (toggle) => toggle.setValue(this.plugin.settings.enableFocus).onChange(async (value) => {
-        this.plugin.settings.enableFocus = value;
-        await this.plugin.saveSettings();
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName(this.plugin.t("focusInterval")).setDesc(this.plugin.t("focusIntervalDesc")).addText(
-      (text) => text.setPlaceholder("60").setValue(String(this.plugin.settings.focusInterval)).onChange(async (value) => {
+    new import_obsidian.Setting(containerEl).setName(this.plugin.t("focusInterval")).setDesc(this.plugin.t("focusIntervalDesc")).addText((text) => {
+      text.setPlaceholder("60").setValue(String(this.plugin.settings.focusInterval)).onChange(async (value) => {
         const num = parseInt(value);
         if (!isNaN(num) && num >= 1) {
           this.plugin.settings.focusInterval = num;
@@ -425,10 +389,14 @@ var ReminderFocusSettingTab = class extends import_obsidian.PluginSettingTab {
         } else {
           new import_obsidian.Notice(this.plugin.t("invalidInterval"));
         }
-      })
-    );
-    new import_obsidian.Setting(containerEl).setName(this.plugin.t("detectionInterval")).setDesc(this.plugin.t("detectionIntervalDesc")).addText(
-      (text) => text.setPlaceholder("1000").setValue(String(this.plugin.settings.detectionInterval)).onChange(async (value) => {
+      });
+      const input = text.inputEl;
+      input.type = "number";
+      input.min = "1";
+      input.step = "1";
+    });
+    new import_obsidian.Setting(containerEl).setName(this.plugin.t("detectionInterval")).setDesc(this.plugin.t("detectionIntervalDesc")).addText((text) => {
+      text.setPlaceholder("1000").setValue(String(this.plugin.settings.detectionInterval)).onChange(async (value) => {
         const num = parseInt(value);
         if (!isNaN(num) && num >= 100) {
           this.plugin.settings.detectionInterval = num;
@@ -437,8 +405,12 @@ var ReminderFocusSettingTab = class extends import_obsidian.PluginSettingTab {
         } else {
           new import_obsidian.Notice(this.plugin.t("invalidDetectionInterval"));
         }
-      })
-    );
+      });
+      const input = text.inputEl;
+      input.type = "number";
+      input.min = "100";
+      input.step = "100";
+    });
     new import_obsidian.Setting(containerEl).setName(this.plugin.t("debugMode")).setDesc(this.plugin.t("debugModeDesc")).addToggle(
       (toggle) => toggle.setValue(this.plugin.settings.debugMode).onChange(async (value) => {
         this.plugin.settings.debugMode = value;
