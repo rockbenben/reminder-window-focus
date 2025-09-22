@@ -1,5 +1,5 @@
 {
-  "name": "reminder-window-focus",
+  "name": "bring-reminders-front",
   "version": "1.0.2",
   "description": "Obsidian plugin to focus window when reminder appears",
   "main": "main.js",
@@ -17,11 +17,11 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/rockbenben/reminder-window-focus.git"
+    "url": "https://github.com/rockbenben/bring-reminders-front.git"
   },
-  "homepage": "https://github.com/rockbenben/reminder-window-focus",
+  "homepage": "https://github.com/rockbenben/bring-reminders-front",
   "bugs": {
-    "url": "https://github.com/rockbenben/reminder-window-focus/issues"
+    "url": "https://github.com/rockbenben/bring-reminders-front/issues"
   },
   "devDependencies": {
     "@types/node": "^20.10.0",

@@ -1,139 +1,115 @@
-# Obsidian Reminder Focus Plugin
+# Bring Reminders to Front
 
-[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/rockbenben/reminder-window-focus?style=for-the-badge&sort=semver)](https://github.com/rockbenben/reminder-window-focus/releases/latest)
-[![GitHub License](https://img.shields.io/github/license/rockbenben/reminder-window-focus?style=for-the-badge)](LICENSE)
+[![GitHub release (latest SemVer)](https://img.shields.io/github/v/release/rockbenben/bring-reminders-front?style=for-the-badge&sort=semver)](https://github.com/rockbenben/bring-reminders-front/releases/latest)
+[![GitHub License](https://img.shields.io/github/license/rockbenben/bring-reminders-front?style=for-the-badge)](LICENSE)
 
 🇺🇸 English | [🇨🇳 中文](README_zh.md)
 
 ## Description
 
-The **Reminder Window Focus** plugin automatically focuses and brings the Obsidian window to the front when a reminder notification from the `obsidian-reminder` plugin appears. This ensures you never miss important reminders, even when working in other applications or when Obsidian is running in the background.
+When a reminder modal from the `obsidian-reminder` plugin appears, Bring Reminders to Front automatically brings the Obsidian window to the foreground and focuses the reminder modal container, ensuring you won't miss any reminders.
 
 ## ✨ Key Features
 
-- 🔔 **Smart Detection**: Intelligently detects reminder popups from the obsidian-reminder plugin
-- 🪟 **Auto Window Focus**: Automatically brings Obsidian to the front when reminders appear
-- ⏱️ **Cooldown Protection**: Prevents excessive window focusing with configurable time intervals
-- 🌐 **Bilingual Interface**: Full support for English and Chinese languages with auto-detection
-- ⚙️ **Customizable Settings**: Fine-tune detection intervals, focus timing, and behavior
+- 🔔 Smart detection: Recognizes reminder modals from the obsidian-reminder plugin
+- 🪟 Auto bring-to-front: Brings Obsidian to the foreground when reminders appear
+- ⏱️ Cooldown protection: Configurable minimum focus interval to avoid focus thrashing
+- 🌐 Bilingual UI: Full English/Chinese support with auto detection
 
 ## 📦 Installation
 
-### Method 1: From Obsidian Community Plugins (Recommended)
+### Method 1: From Obsidian Community Plugins (Not published yet)
 
 1. Open Obsidian Settings (⚙️)
-2. Navigate to **Community Plugins**
-3. Disable **Safe Mode** if not already done
-4. Click **Browse** and search for "Reminder Window Focus"
-5. Click **Install** and then **Enable**
+2. Navigate to Community Plugins
+3. Disable Safe Mode if it's enabled
+4. Click Browse and search for "Bring Reminders to Front"
+5. Click Install then Enable
 
 ### Method 2: Manual Installation
 
-1. Download the latest release from [GitHub Releases](https://github.com/rockbenben/reminder-window-focus/releases)
+1. Download the latest release from [GitHub Releases](https://github.com/rockbenben/bring-reminders-front/releases)
 2. Extract the downloaded files
 3. Copy the plugin folder to your vault's plugins directory:
 
-   ```bash
-   YourVault/.obsidian/plugins/reminder-window-focus/
+   ```text
+   YourVault/.obsidian/plugins/bring-reminders-front/
    ```
 
 4. Restart Obsidian or reload plugins
-5. Enable the plugin in **Settings → Community Plugins**
+5. Enable the plugin in Settings → Community Plugins
 
 ### Method 3: Using BRAT (Beta Reviewers Auto-update Tool)
 
 1. Install the [BRAT plugin](https://github.com/TfTHacker/obsidian42-brat)
-2. Open BRAT settings and click **Add Beta Plugin**
-3. Enter the repository URL: `rockbenben/reminder-window-focus`
-4. Click **Add Plugin** and enable it
+2. Open BRAT settings and click Add Beta Plugin
+3. Enter the repository: rockbenben/bring-reminders-front
+4. Click Add Plugin and enable it
 
 ## ⚙️ Configuration
 
-Access plugin settings via **Settings → Community Plugins → Reminder Window Focus**.
+Open Settings → Community Plugins → Bring Reminders to Front.
 
-### Available Options
+| Setting                 | Description                                                        | Default     | Range               |
+| ----------------------- | ------------------------------------------------------------------ | ----------- | ------------------- |
+| Minimum focus interval  | Minimum time between consecutive focus actions (avoid focus thrash) | 60 seconds  | ≥ 1 second          |
+| Detection interval      | Fallback periodic scan (Observer + initial scan are already used)   | 10000 ms    | ≥ 100 ms            |
+| Language                | Interface language                                                  | Auto-detect | Auto / English / 中文 |
 
-| Setting                    | Description                                    | Default     | Range              |
-| -------------------------- | ---------------------------------------------- | ----------- | ------------------ |
-| **Enable Window Focus**    | Toggle automatic window focusing on/off        | ✅ Enabled  | On/Off             |
-| **Minimum Focus Interval** | Minimum time between consecutive focus actions | 60 seconds  | 1 second or higher |
-| **Detection Interval**     | How often to check for reminder modals         | 10000ms     | 100ms or higher    |
-| **Language**               | Interface language setting                     | Auto-detect | Auto/English/中文  |
+> Numeric inputs are optimized with min/step and validation to prevent invalid values.
 
-### 🔧 Advanced Configuration Tips
+### 🔧 Advanced Tips
 
-- **Lower detection intervals** (100-500ms) = More responsive but higher CPU usage
-- **Higher detection intervals** (2000ms+) = Less responsive but better performance, saves battery
-- **Shorter focus intervals** (1-30s) = More frequent focusing for heavy reminder users
-- **Longer focus intervals** (120s+) = Less intrusive, can be set to hours for minimal interruption
-- **Recommended**: Set detection interval ≤ focus interval for optimal performance
+- Lower detection interval (100–500 ms) = faster response, higher CPU
+- Higher detection interval (≥ 2000 ms) = slower response, better efficiency
+- Shorter focus interval (1–30 s) = for frequent reminders
+- Longer focus interval (≥ 120 s) = less intrusive
+- Recommendation: Detection interval ≤ focus interval for a better balance
 
-## 🔧 How It Works
+## 🧰 How It Works
 
-The plugin uses intelligent detection mechanisms to identify reminder notifications:
+The plugin identifies reminder notifications with a lightweight detection flow:
 
-1. **Modal Detection**: Continuously monitors for new modal windows in Obsidian
-2. **Reminder Identification**: Analyzes modal content to identify reminder-specific elements
-3. **Window State Check**: Verifies if Obsidian window is currently focused
-4. **Cooldown Verification**: Ensures minimum interval has passed since last focus action
-5. **Focus Execution**: Brings Obsidian window to front temporarily when conditions are met
-6. **State Reset**: Returns to normal monitoring state after successful focus
+1. Modal detection: Use MutationObserver to watch for new modal containers
+2. Reminder identification: Check classes/markers/text traits to confirm reminder modals
+3. Bring to front: Raise Obsidian window when necessary
+4. Cooldown check: Ensure the minimum interval has elapsed since last focus
+5. Focus execution: Set tabindex and focus the modal container with retries; scroll into view
+6. State reset: Track processed modals and resume normal observation
 
-### 🎯 Detection Logic
+## 🎯 Detection Logic
 
-The plugin identifies reminder modals by looking for:
-
-- Modal containers with reminder-specific classes
-- Elements containing reminder text patterns
-- Specific DOM structures used by obsidian-reminder plugin
-- Time-based elements and reminder content
-
-## 📋 Requirements
-
-| Requirement      | Version/Details                              |
-| ---------------- | -------------------------------------------- |
-| **Obsidian**     | v0.15.0 or higher                            |
-| **Platform**     | Desktop only (Windows, macOS, Linux)         |
-| **Dependencies** | `obsidian-reminder` plugin must be installed |
-| **Permissions**  | Window focus capabilities (automatic)        |
-
-> **Note**: This plugin is designed specifically for desktop environments and will not function on mobile devices.
+- Modal containers with reminder classes (e.g., .reminder-modal) or markers (e.g., [data-reminder])
+- Real-time DOM MutationObserver + immediate initial scan + configurable periodic fallback
+- Minimal text/aria patterns (e.g., Snooze / Done / "reminder"), without relying on innerHTML
 
 ## 🚀 Usage
 
-1. **Install and Enable**: Follow the installation steps above
-2. **Install obsidian-reminder**: Ensure the companion reminder plugin is installed
-3. **Configure Settings**: Adjust timing and behavior in plugin settings
-4. **Create Reminders**: Use obsidian-reminder to create time-based reminders
-5. **Work Normally**: The plugin works automatically in the background
-6. **Experience Focus**: When reminders appear, Obsidian will automatically come to front
-
-### 💡 Best Practices
-
-- **Set appropriate intervals**: Balance responsiveness with system performance
-- **Test your setup**: Create a test reminder to verify the plugin works correctly
-- **Monitor performance**: Adjust detection intervals if you notice any system slowdown
-- **Use cooldown wisely**: Longer cooldowns prevent excessive window switching
+1. Enable this plugin (Bring Reminders to Front)
+2. Install and enable the obsidian-reminder plugin
+3. Adjust Minimum Focus Interval / Detection Interval in settings as needed
+4. Create a test reminder with obsidian-reminder
+5. Wait for the reminder; the plugin runs automatically in the background
+6. Observe: Obsidian is brought to front and the reminder modal container is focused
 
 ## 🐛 Troubleshooting
 
 ### Common Issues and Solutions
 
-| Issue                   | Possible Cause                  | Solution                                    |
-| ----------------------- | ------------------------------- | ------------------------------------------- |
-| Window not focusing     | Plugin disabled                 | Check plugin is enabled in settings         |
-| Too frequent focusing   | Short cooldown interval         | Increase minimum focus interval             |
-| High CPU usage          | Low detection interval          | Increase detection interval (1000ms+)       |
-| Not detecting reminders | obsidian-reminder not installed | Install and enable obsidian-reminder plugin |
-| Language not changing   | Cache issues                    | Restart Obsidian after language change      |
+| Issue                 | Possible Cause                        | Solution                                  |
+| --------------------- | ------------------------------------- | ----------------------------------------- |
+| Too frequent focusing | Focus interval too short              | Increase Minimum Focus Interval           |
+| High CPU usage        | Detection interval too low            | Increase Detection Interval (≥ 1000 ms)   |
+| Not detecting         | obsidian-reminder not installed/enabled | Install and enable obsidian-reminder      |
+| Language not switching| Cache/reload issue                    | Restart Obsidian after changing language  |
 
 ### Debug Steps
 
-1. Check that both plugins are enabled
-2. Verify detection interval is reasonable (500-2000ms)
-3. Test with a simple reminder
-4. Check browser console for error messages
-5. Restart Obsidian if issues persist
+1. Confirm both this plugin and obsidian-reminder are enabled
+2. Test with a detection interval between 500–2000 ms
+3. Validate with a simple reminder
+4. Open devtools console to check for errors
+5. Restart Obsidian if the issue persists
 
 ## 🛠️ Development
 
@@ -141,23 +117,23 @@ The plugin identifies reminder modals by looking for:
 
 ```bash
 # Clone the repository
-git clone https://github.com/rockbenben/reminder-window-focus.git
-cd reminder-window-focus
+git clone https://github.com/rockbenben/bring-reminders-front.git
+cd bring-reminders-front
 
 # Install dependencies
 npm install
 
-# Build in development mode (with hot reload)
+# Dev build with hot reload
 npm run dev
 
-# Build for production
+# Production build
 npm run build
 ```
 
 ### Project Structure
 
 ```text
-reminder-window-focus/
+bring-reminders-front/
 ├── main.ts              # Main plugin code
 ├── manifest.json        # Plugin manifest
 ├── package.json         # Node.js dependencies
@@ -166,21 +142,13 @@ reminder-window-focus/
 └── README.md           # Documentation
 ```
 
-### Development Guidelines
-
-- Follow TypeScript best practices
-- Maintain bilingual support (English/Chinese)
-- Test with various reminder scenarios
-- Keep performance impact minimal
-- Document any API changes
-
 ### Contributing
 
-1. Fork the repository
+1. Fork this repository
 2. Create a feature branch: `git checkout -b feature-name`
-3. Make your changes and test thoroughly
-4. Commit with clear messages: `git commit -m "Add: feature description"`
-5. Push and create a Pull Request
+3. Make changes and test thoroughly
+4. Commit with clear messages: `git commit -m "feat: describe the change"`
+5. Push and open a Pull Request
 
 ## License
 
@@ -192,5 +160,5 @@ If you encounter any issues or have suggestions, please open an issue on GitHub.
 
 ## Credits
 
-- Thanks to the Obsidian team for the amazing platform
+- Thanks to the Obsidian team for the great platform
 - Thanks to the obsidian-reminder plugin developers
