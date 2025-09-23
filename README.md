@@ -50,11 +50,11 @@ When a reminder modal from the `obsidian-reminder` plugin appears, Bring Reminde
 
 Open Settings → Community Plugins → Bring Reminders to Front.
 
-| Setting                 | Description                                                        | Default     | Range               |
-| ----------------------- | ------------------------------------------------------------------ | ----------- | ------------------- |
-| Minimum focus interval  | Minimum time between consecutive focus actions (avoid focus thrash) | 60 seconds  | ≥ 1 second          |
-| Detection interval      | Fallback periodic scan (Observer + initial scan are already used)   | 10000 ms    | ≥ 100 ms            |
-| Language                | Interface language                                                  | Auto-detect | Auto / English / 中文 |
+| Setting                | Description                                                         | Default     | Range                 |
+| ---------------------- | ------------------------------------------------------------------- | ----------- | --------------------- |
+| Minimum focus interval | Minimum time between consecutive focus actions (avoid focus thrash) | 10 seconds  | ≥ 1 second            |
+| Detection interval     | Fallback periodic scan (Observer + initial scan are already used)   | 5000 ms     | ≥ 100 ms              |
+| Language               | Interface language                                                  | Auto-detect | Auto / English / 中文 |
 
 > Numeric inputs are optimized with min/step and validation to prevent invalid values.
 
@@ -96,12 +96,12 @@ The plugin identifies reminder notifications with a lightweight detection flow:
 
 ### Common Issues and Solutions
 
-| Issue                 | Possible Cause                        | Solution                                  |
-| --------------------- | ------------------------------------- | ----------------------------------------- |
-| Too frequent focusing | Focus interval too short              | Increase Minimum Focus Interval           |
-| High CPU usage        | Detection interval too low            | Increase Detection Interval (≥ 1000 ms)   |
-| Not detecting         | obsidian-reminder not installed/enabled | Install and enable obsidian-reminder      |
-| Language not switching| Cache/reload issue                    | Restart Obsidian after changing language  |
+| Issue                  | Possible Cause                          | Solution                                 |
+| ---------------------- | --------------------------------------- | ---------------------------------------- |
+| Too frequent focusing  | Focus interval too short                | Increase Minimum Focus Interval          |
+| High CPU usage         | Detection interval too low              | Increase Detection Interval (≥ 1000 ms)  |
+| Not detecting          | obsidian-reminder not installed/enabled | Install and enable obsidian-reminder     |
+| Language not switching | Cache/reload issue                      | Restart Obsidian after changing language |
 
 ### Debug Steps
 
