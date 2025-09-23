@@ -70,9 +70,9 @@ var translations = {
   }
 };
 var DEFAULT_SETTINGS = {
-  focusInterval: 60,
-  detectionInterval: 1e4,
-  // 默认每10秒检测一次
+  focusInterval: 10,
+  detectionInterval: 5e3,
+  // 默认每5秒检测一次
   language: "auto",
   debugMode: false
   // 默认关闭调试模式
@@ -145,9 +145,7 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
     const textContent = element.textContent || "";
     const hasSnoozeButton = this.hasButtonWithText(element, "Snooze");
     const hasDoneButton = this.hasButtonWithText(element, "Done");
-    const isReminderModal = element.classList.contains("modal-container") && (textContent.includes("reminder") || textContent.includes("\u63D0\u9192") || element.querySelector(".reminder-modal") !== null || element.querySelector("[data-reminder]") !== null || // 检查是否包含 Snooze 按钮（reminder 插件的特征）
-    textContent.includes("Snooze") || textContent.includes("Done") || // 检查按钮元素
-    element.querySelector('button[aria-label*="Snooze"]') !== null || element.querySelector('button[aria-label*="Done"]') !== null || hasSnoozeButton || hasDoneButton);
+    const isReminderModal = element.classList.contains("modal-container") && this.isObsidianReminderModal(element, textContent, hasSnoozeButton, hasDoneButton);
     if (isReminderModal) {
       this.debug("Detected reminder modal");
       this.handleReminderModal(element);
@@ -211,6 +209,60 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
       if (button.textContent?.includes(text)) {
         return true;
       }
+    }
+    return false;
+  }
+  isObsidianReminderModal(element, textContent, hasSnoozeButton, hasDoneButton) {
+    if (!hasSnoozeButton && !hasDoneButton && !element.querySelector("button")) {
+      return false;
+    }
+    const hasBothButtons = hasDoneButton && hasSnoozeButton;
+    if (hasBothButtons) {
+      this.debug("Detected reminder modal: has both Done and Snooze buttons");
+      return true;
+    }
+    const hasReminderClass = element.querySelector(".reminder-modal") !== null || element.querySelector(".reminder-title") !== null || element.querySelector(".reminder-actions") !== null || element.querySelector(".reminder-file") !== null;
+    if (hasReminderClass) {
+      this.debug("Detected reminder modal: has reminder CSS classes");
+      return true;
+    }
+    const hasReminderStructure = element.querySelector("h3") !== null && // reminder-title 使用 h3
+    element.querySelector("select") !== null && // Snooze 下拉选择
+    element.querySelector("select option[selected][disabled][hidden]") !== null;
+    if (hasReminderStructure && (hasSnoozeButton || hasDoneButton)) {
+      this.debug("Detected reminder modal: has reminder structure and buttons");
+      return true;
+    }
+    const hasReminderAriaLabel = element.querySelector('button[aria-label*="reminder"]') !== null || element.querySelector('[aria-label*="Remind me later"]') !== null || element.querySelector('[aria-label*="Mark as Done"]') !== null || element.querySelector('button[aria-label*="Done"]') !== null;
+    if (hasReminderAriaLabel) {
+      this.debug("Detected reminder modal: has reminder aria-labels");
+      return true;
+    }
+    const hasSpecificButtonCombination = (hasSnoozeButton || textContent.includes("Snooze")) && (hasDoneButton || textContent.includes("Done")) && (textContent.includes("minutes") || textContent.includes("hours") || textContent.includes("Tomorrow") || textContent.includes("Next week"));
+    if (hasSpecificButtonCombination) {
+      this.debug("Detected reminder modal: has specific button combination and time options");
+      return true;
+    }
+    const hasNotificationModalFeatures = element.querySelector(".mod-cta") !== null && // "Done" 按钮使用 mod-cta 类
+    element.querySelector("select.dropdown") !== null;
+    if (hasNotificationModalFeatures && (hasSnoozeButton || hasDoneButton)) {
+      this.debug("Detected reminder modal: has NotificationModal features");
+      return true;
+    }
+    const hasFileLink = element.querySelector(".reminder-file") !== null || element.querySelector('button[aria-label*=".md"]') !== null || textContent.includes(".md") && (hasSnoozeButton || hasDoneButton);
+    if (hasFileLink) {
+      this.debug("Detected reminder modal: has file link");
+      return true;
+    }
+    const hasSvelteFeatures = element.querySelector("[data-svelte]") !== null || element.classList.toString().includes("svelte");
+    if (hasSvelteFeatures && (hasSnoozeButton || hasDoneButton)) {
+      this.debug("Detected reminder modal: has Svelte features");
+      return true;
+    }
+    const hasBasicReminderIndicators = (textContent.includes("reminder") || textContent.includes("\u63D0\u9192")) && (hasSnoozeButton || hasDoneButton) && textContent.length < 2e3;
+    if (hasBasicReminderIndicators) {
+      this.debug("Detected reminder modal: has basic reminder indicators");
+      return true;
     }
     return false;
   }
@@ -381,7 +433,7 @@ var ReminderFocusSettingTab = class extends import_obsidian.PluginSettingTab {
       })
     );
     new import_obsidian.Setting(containerEl).setName(this.plugin.t("focusInterval")).setDesc(this.plugin.t("focusIntervalDesc")).addText((text) => {
-      text.setPlaceholder("60").setValue(String(this.plugin.settings.focusInterval)).onChange(async (value) => {
+      text.setPlaceholder("10").setValue(String(this.plugin.settings.focusInterval)).onChange(async (value) => {
         const num = parseInt(value);
         if (!isNaN(num) && num >= 1) {
           this.plugin.settings.focusInterval = num;
@@ -396,7 +448,7 @@ var ReminderFocusSettingTab = class extends import_obsidian.PluginSettingTab {
       input.step = "1";
     });
     new import_obsidian.Setting(containerEl).setName(this.plugin.t("detectionInterval")).setDesc(this.plugin.t("detectionIntervalDesc")).addText((text) => {
-      text.setPlaceholder("1000").setValue(String(this.plugin.settings.detectionInterval)).onChange(async (value) => {
+      text.setPlaceholder("5000").setValue(String(this.plugin.settings.detectionInterval)).onChange(async (value) => {
         const num = parseInt(value);
         if (!isNaN(num) && num >= 100) {
           this.plugin.settings.detectionInterval = num;

@@ -107,8 +107,8 @@ interface ReminderFocusSettings {
 }
 
 const DEFAULT_SETTINGS: ReminderFocusSettings = {
-  focusInterval: 60,
-  detectionInterval: 10000, // 默认每10秒检测一次
+  focusInterval: 10,
+  detectionInterval: 5000, // 默认每5秒检测一次
   language: "auto",
   debugMode: false, // 默认关闭调试模式
 };
@@ -211,20 +211,7 @@ export default class ReminderFocusPlugin extends Plugin {
     const hasSnoozeButton = this.hasButtonWithText(element, "Snooze");
     const hasDoneButton = this.hasButtonWithText(element, "Done");
 
-    const isReminderModal =
-      element.classList.contains("modal-container") &&
-      (textContent.includes("reminder") ||
-        textContent.includes("提醒") ||
-        element.querySelector(".reminder-modal") !== null ||
-        element.querySelector("[data-reminder]") !== null ||
-        // 检查是否包含 Snooze 按钮（reminder 插件的特征）
-        textContent.includes("Snooze") ||
-        textContent.includes("Done") ||
-        // 检查按钮元素
-        element.querySelector('button[aria-label*="Snooze"]') !== null ||
-        element.querySelector('button[aria-label*="Done"]') !== null ||
-        hasSnoozeButton ||
-        hasDoneButton);
+    const isReminderModal = element.classList.contains("modal-container") && this.isObsidianReminderModal(element, textContent, hasSnoozeButton, hasDoneButton);
 
     if (isReminderModal) {
       this.debug("Detected reminder modal");
@@ -325,6 +312,105 @@ export default class ReminderFocusPlugin extends Plugin {
         return true;
       }
     }
+    return false;
+  }
+
+  private isObsidianReminderModal(element: HTMLElement, textContent: string, hasSnoozeButton: boolean, hasDoneButton: boolean): boolean {
+    // 基于 obsidian-reminder 插件源代码的精确识别规则
+
+    // 快速检查：如果没有任何按钮，很可能不是 reminder 弹窗
+    if (!hasSnoozeButton && !hasDoneButton && !element.querySelector("button")) {
+      return false;
+    }
+
+    // 1. 检查是否包含 "Done" 和 "Snooze" 按钮（reminder 插件的核心特征）
+    const hasBothButtons = hasDoneButton && hasSnoozeButton;
+    if (hasBothButtons) {
+      this.debug("Detected reminder modal: has both Done and Snooze buttons");
+      return true;
+    }
+
+    // 2. 检查是否有 reminder 相关的 CSS 类和结构
+    const hasReminderClass =
+      element.querySelector(".reminder-modal") !== null ||
+      element.querySelector(".reminder-title") !== null ||
+      element.querySelector(".reminder-actions") !== null ||
+      element.querySelector(".reminder-file") !== null;
+
+    if (hasReminderClass) {
+      this.debug("Detected reminder modal: has reminder CSS classes");
+      return true;
+    }
+
+    // 3. 检查 modal 内容结构（基于 Reminder.svelte 的结构）
+    const hasReminderStructure =
+      element.querySelector("h3") !== null && // reminder-title 使用 h3
+      element.querySelector("select") !== null && // Snooze 下拉选择
+      element.querySelector("select option[selected][disabled][hidden]") !== null; // Snooze placeholder
+
+    if (hasReminderStructure && (hasSnoozeButton || hasDoneButton)) {
+      this.debug("Detected reminder modal: has reminder structure and buttons");
+      return true;
+    }
+
+    // 4. 检查 aria-label 属性（obsidian-reminder 会设置特定的 aria-label）
+    const hasReminderAriaLabel =
+      element.querySelector('button[aria-label*="reminder"]') !== null ||
+      element.querySelector('[aria-label*="Remind me later"]') !== null ||
+      element.querySelector('[aria-label*="Mark as Done"]') !== null ||
+      element.querySelector('button[aria-label*="Done"]') !== null;
+
+    if (hasReminderAriaLabel) {
+      this.debug("Detected reminder modal: has reminder aria-labels");
+      return true;
+    }
+
+    // 5. 检查特定的按钮组合和文本模式
+    const hasSpecificButtonCombination =
+      (hasSnoozeButton || textContent.includes("Snooze")) &&
+      (hasDoneButton || textContent.includes("Done")) &&
+      (textContent.includes("minutes") || textContent.includes("hours") || textContent.includes("Tomorrow") || textContent.includes("Next week"));
+
+    if (hasSpecificButtonCombination) {
+      this.debug("Detected reminder modal: has specific button combination and time options");
+      return true;
+    }
+
+    // 6. 检查 NotificationModal 的特征（基于源代码中的实现）
+    const hasNotificationModalFeatures =
+      element.querySelector(".mod-cta") !== null && // "Done" 按钮使用 mod-cta 类
+      element.querySelector("select.dropdown") !== null; // Snooze 下拉使用 dropdown 类
+
+    if (hasNotificationModalFeatures && (hasSnoozeButton || hasDoneButton)) {
+      this.debug("Detected reminder modal: has NotificationModal features");
+      return true;
+    }
+
+    // 7. 检查文件链接特征（reminder 弹窗会显示文件链接）
+    const hasFileLink =
+      element.querySelector(".reminder-file") !== null || element.querySelector('button[aria-label*=".md"]') !== null || (textContent.includes(".md") && (hasSnoozeButton || hasDoneButton));
+
+    if (hasFileLink) {
+      this.debug("Detected reminder modal: has file link");
+      return true;
+    }
+
+    // 8. 检查 Svelte 组件特征（obsidian-reminder 使用 Svelte）
+    const hasSvelteFeatures = element.querySelector("[data-svelte]") !== null || element.classList.toString().includes("svelte");
+
+    if (hasSvelteFeatures && (hasSnoozeButton || hasDoneButton)) {
+      this.debug("Detected reminder modal: has Svelte features");
+      return true;
+    }
+
+    // 9. 回退检查：基本的 reminder 文本匹配（更严格的条件）
+    const hasBasicReminderIndicators = (textContent.includes("reminder") || textContent.includes("提醒")) && (hasSnoozeButton || hasDoneButton) && textContent.length < 2000; // 避免匹配过长的内容
+
+    if (hasBasicReminderIndicators) {
+      this.debug("Detected reminder modal: has basic reminder indicators");
+      return true;
+    }
+
     return false;
   }
 
@@ -565,7 +651,7 @@ class ReminderFocusSettingTab extends PluginSettingTab {
       .setDesc(this.plugin.t("focusIntervalDesc"))
       .addText((text) => {
         text
-          .setPlaceholder("60")
+          .setPlaceholder("10")
           .setValue(String(this.plugin.settings.focusInterval))
           .onChange(async (value) => {
             const num = parseInt(value);
@@ -589,7 +675,7 @@ class ReminderFocusSettingTab extends PluginSettingTab {
       .setDesc(this.plugin.t("detectionIntervalDesc"))
       .addText((text) => {
         text
-          .setPlaceholder("1000")
+          .setPlaceholder("5000")
           .setValue(String(this.plugin.settings.detectionInterval))
           .onChange(async (value) => {
             const num = parseInt(value);
