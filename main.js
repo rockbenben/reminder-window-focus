@@ -88,7 +88,7 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
   // Debug logging method
   debug(message, ...args) {
     if (this.settings?.debugMode) {
-      console.log(`[Reminder Focus] ${message}`, ...args);
+      console.debug(`[Reminder Focus] ${message}`, ...args);
     }
   }
   async onload() {
@@ -179,7 +179,7 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
       subtree: true
       // 确保能检测到深层变化
     });
-    this.focusModal(modalElement, modalId);
+    void this.focusModal(modalElement, modalId);
   }
   getModalId(element) {
     if (element.id) {
@@ -355,7 +355,7 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
     if (!modalElement.hasAttribute("tabindex")) {
       modalElement.setAttribute("tabindex", "-1");
     }
-    this.focusWithRetry(modalElement, 3);
+    void this.focusWithRetry(modalElement, 3);
     this.debug("Focusing modal container");
     modalElement.scrollIntoView({ behavior: "smooth", block: "center" });
   }

@@ -124,7 +124,7 @@ export default class ReminderFocusPlugin extends Plugin {
   // Debug logging method
   private debug(message: string, ...args: unknown[]) {
     if (this.settings?.debugMode) {
-      console.log(`[Reminder Focus] ${message}`, ...args);
+      console.debug(`[Reminder Focus] ${message}`, ...args);
     }
   }
 
@@ -256,7 +256,7 @@ export default class ReminderFocusPlugin extends Plugin {
     });
 
     // 聚焦提醒弹窗（而不是整个窗口）
-    this.focusModal(modalElement, modalId);
+    void this.focusModal(modalElement, modalId);
   }
 
   private getModalId(element: HTMLElement): string {
@@ -532,7 +532,7 @@ export default class ReminderFocusPlugin extends Plugin {
     if (!modalElement.hasAttribute("tabindex")) {
       modalElement.setAttribute("tabindex", "-1");
     }
-    this.focusWithRetry(modalElement, 3);
+    void this.focusWithRetry(modalElement, 3);
     this.debug("Focusing modal container");
 
     // 滚动到弹窗位置，确保用户能看到
