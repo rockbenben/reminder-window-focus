@@ -1,9 +1,9 @@
 {
   "id": "bring-reminders-front",
   "name": "Bring Reminders to Front",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "minAppVersion": "0.15.0",
-  "description": "When a reminder pops up, instantly brings the window to front so you never miss it / 出现提醒即置前聚焦",
+  "description": "When a reminder pops up, instantly brings the window to front so you never miss it / 出现提醒即置前聚焦.",
   "author": "rockbenben",
   "authorUrl": "https://github.com/rockbenben",
   "isDesktopOnly": true
