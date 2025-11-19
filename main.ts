@@ -155,7 +155,7 @@ export default class ReminderFocusPlugin extends Plugin {
 
     // 清理定时器
     if (this.detectionTimer) {
-      clearInterval(this.detectionTimer);
+      window.clearInterval(this.detectionTimer);
       this.detectionTimer = null;
     }
 
@@ -167,19 +167,25 @@ export default class ReminderFocusPlugin extends Plugin {
   private setupModalDetection() {
     // 监听 DOM 变化以检测新的弹窗
     this.modalObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
-          if (node instanceof HTMLElement) {
-            this.checkForReminderModal(node);
+      for (const mutation of mutations) {
+        if (mutation.addedNodes.length > 0) {
+          for (let i = 0; i < mutation.addedNodes.length; i++) {
+            const node = mutation.addedNodes[i];
+            if (node instanceof HTMLElement) {
+              // 快速过滤：只检查可能是弹窗的元素
+              if (node.classList.contains("modal-container") || node.querySelector(".modal-container")) {
+                this.checkForReminderModal(node);
+              }
+            }
           }
-        });
-      });
+        }
+      }
     });
 
     // 开始观察 body 元素
     this.modalObserver.observe(document.body, {
       childList: true,
-      subtree: true,
+      subtree: true, // 需要 subtree 因为 modal-container 可能不是直接子元素
     });
 
     // 定时检测机制
@@ -191,7 +197,7 @@ export default class ReminderFocusPlugin extends Plugin {
 
     // 同时监听 Obsidian 的 Modal 打开事件
     this.registerEvent(
-      this.app.workspace.on("window-open", (leaf, win) => {
+      this.app.workspace.on("window-open", () => {
         setTimeout(() => {
           this.checkAllModals();
         }, 100);
@@ -203,37 +209,35 @@ export default class ReminderFocusPlugin extends Plugin {
   }
 
   private checkForReminderModal(element: HTMLElement) {
-    // 检查是否是 reminder 插件的弹窗
-    // 特征：包含 "reminder" 相关的类名或内容
-    const textContent = element.textContent || "";
-
-    // 检查按钮元素中是否包含特定文本
-    const hasSnoozeButton = this.hasButtonWithText(element, "Snooze");
-    const hasDoneButton = this.hasButtonWithText(element, "Done");
-
-    const isReminderModal = element.classList.contains("modal-container") && this.isObsidianReminderModal(element, textContent, hasSnoozeButton, hasDoneButton);
-
-    if (isReminderModal) {
-      this.debug("Detected reminder modal");
-      this.handleReminderModal(element);
+    // 如果元素本身是 modal-container，直接检查
+    if (element.classList.contains("modal-container")) {
+      if (this.isObsidianReminderModal(element)) {
+        this.debug("Detected reminder modal (direct)");
+        this.handleReminderModal(element);
+      }
+    } else {
+      // 否则检查其子元素
+      const modal = element.querySelector<HTMLElement>(".modal-container");
+      if (modal && this.isObsidianReminderModal(modal)) {
+        this.debug("Detected reminder modal (child)");
+        this.handleReminderModal(modal);
+      }
     }
   }
 
   private checkAllModals() {
     // 检查所有当前存在的弹窗
-    const modals = document.querySelectorAll(".modal-container");
-    modals.forEach((modal) => {
-      if (modal instanceof HTMLElement) {
-        this.checkForReminderModal(modal);
-      }
-    });
+    const modals = document.querySelectorAll<HTMLElement>(".modal-container");
+    for (let i = 0; i < modals.length; i++) {
+      this.checkForReminderModal(modals[i]);
+    }
   }
 
   private handleReminderModal(modalElement: HTMLElement) {
     // 检查是否已经处理过这个弹窗
     const modalId = this.getModalId(modalElement);
     if (this.focusedModals.has(modalId)) {
-      this.debug(`Modal ${modalId} already focused, skipping`);
+      // this.debug(`Modal ${modalId} already focused, skipping`); // 减少日志噪音
       return;
     }
 
@@ -252,7 +256,7 @@ export default class ReminderFocusPlugin extends Plugin {
 
     observer.observe(modalElement.parentElement || document.body, {
       childList: true,
-      subtree: true, // 确保能检测到深层变化
+      subtree: true,
     });
 
     // 聚焦提醒弹窗（而不是整个窗口）
@@ -315,29 +319,28 @@ export default class ReminderFocusPlugin extends Plugin {
     return false;
   }
 
-  private isObsidianReminderModal(element: HTMLElement, textContent: string, hasSnoozeButton: boolean, hasDoneButton: boolean): boolean {
-    // 基于 obsidian-reminder 插件源代码的精确识别规则
-
+  private isObsidianReminderModal(element: HTMLElement): boolean {
+    // 优化：提取文本内容一次
+    const textContent = element.textContent || "";
+    
     // 快速检查：如果没有任何按钮，很可能不是 reminder 弹窗
-    if (!hasSnoozeButton && !hasDoneButton && !element.querySelector("button")) {
+    const buttons = element.querySelectorAll("button");
+    if (buttons.length === 0) {
       return false;
     }
 
+    const hasSnoozeButton = this.hasButtonWithText(element, "Snooze");
+    const hasDoneButton = this.hasButtonWithText(element, "Done");
+
     // 1. 检查是否包含 "Done" 和 "Snooze" 按钮（reminder 插件的核心特征）
-    const hasBothButtons = hasDoneButton && hasSnoozeButton;
-    if (hasBothButtons) {
+    if (hasDoneButton && hasSnoozeButton) {
       this.debug("Detected reminder modal: has both Done and Snooze buttons");
       return true;
     }
 
-    // 2. 检查是否有 reminder 相关的 CSS 类和结构
-    const hasReminderClass =
-      element.querySelector(".reminder-modal") !== null ||
-      element.querySelector(".reminder-title") !== null ||
-      element.querySelector(".reminder-actions") !== null ||
-      element.querySelector(".reminder-file") !== null;
-
-    if (hasReminderClass) {
+    // 2. 检查是否有 reminder 相关的 CSS 类
+    // 优化：使用 querySelector 检查特定类名
+    if (element.querySelector(".reminder-modal, .reminder-title, .reminder-actions, .reminder-file")) {
       this.debug("Detected reminder modal: has reminder CSS classes");
       return true;
     }
@@ -353,14 +356,13 @@ export default class ReminderFocusPlugin extends Plugin {
       return true;
     }
 
-    // 4. 检查 aria-label 属性（obsidian-reminder 会设置特定的 aria-label）
-    const hasReminderAriaLabel =
-      element.querySelector('button[aria-label*="reminder"]') !== null ||
-      element.querySelector('[aria-label*="Remind me later"]') !== null ||
-      element.querySelector('[aria-label*="Mark as Done"]') !== null ||
-      element.querySelector('button[aria-label*="Done"]') !== null;
-
-    if (hasReminderAriaLabel) {
+    // 4. 检查 aria-label 属性
+    if (
+      element.querySelector('button[aria-label*="reminder"]') ||
+      element.querySelector('[aria-label*="Remind me later"]') ||
+      element.querySelector('[aria-label*="Mark as Done"]') ||
+      element.querySelector('button[aria-label*="Done"]')
+    ) {
       this.debug("Detected reminder modal: has reminder aria-labels");
       return true;
     }
@@ -376,37 +378,30 @@ export default class ReminderFocusPlugin extends Plugin {
       return true;
     }
 
-    // 6. 检查 NotificationModal 的特征（基于源代码中的实现）
-    const hasNotificationModalFeatures =
-      element.querySelector(".mod-cta") !== null && // "Done" 按钮使用 mod-cta 类
-      element.querySelector("select.dropdown") !== null; // Snooze 下拉使用 dropdown 类
-
-    if (hasNotificationModalFeatures && (hasSnoozeButton || hasDoneButton)) {
+    // 6. 检查 NotificationModal 的特征
+    if (element.querySelector(".mod-cta") && element.querySelector("select.dropdown") && (hasSnoozeButton || hasDoneButton)) {
       this.debug("Detected reminder modal: has NotificationModal features");
       return true;
     }
 
-    // 7. 检查文件链接特征（reminder 弹窗会显示文件链接）
-    const hasFileLink =
-      element.querySelector(".reminder-file") !== null || element.querySelector('button[aria-label*=".md"]') !== null || (textContent.includes(".md") && (hasSnoozeButton || hasDoneButton));
-
-    if (hasFileLink) {
+    // 7. 检查文件链接特征
+    if (
+      (element.querySelector(".reminder-file") || 
+       element.querySelector('button[aria-label*=".md"]') || 
+       (textContent.includes(".md") && (hasSnoozeButton || hasDoneButton)))
+    ) {
       this.debug("Detected reminder modal: has file link");
       return true;
     }
 
-    // 8. 检查 Svelte 组件特征（obsidian-reminder 使用 Svelte）
-    const hasSvelteFeatures = element.querySelector("[data-svelte]") !== null || element.classList.toString().includes("svelte");
-
-    if (hasSvelteFeatures && (hasSnoozeButton || hasDoneButton)) {
+    // 8. 检查 Svelte 组件特征
+    if ((element.querySelector("[data-svelte]") || element.classList.toString().includes("svelte")) && (hasSnoozeButton || hasDoneButton)) {
       this.debug("Detected reminder modal: has Svelte features");
       return true;
     }
 
-    // 9. 回退检查：基本的 reminder 文本匹配（更严格的条件）
-    const hasBasicReminderIndicators = (textContent.includes("reminder") || textContent.includes("提醒")) && (hasSnoozeButton || hasDoneButton) && textContent.length < 2000; // 避免匹配过长的内容
-
-    if (hasBasicReminderIndicators) {
+    // 9. 回退检查：基本的 reminder 文本匹配
+    if ((textContent.includes("reminder") || textContent.includes("提醒")) && (hasSnoozeButton || hasDoneButton) && textContent.length < 2000) {
       this.debug("Detected reminder modal: has basic reminder indicators");
       return true;
     }
@@ -458,73 +453,76 @@ export default class ReminderFocusPlugin extends Plugin {
 
   private async ensureWindowVisible(): Promise<void> {
     return new Promise((resolve) => {
-      // 先聚焦主窗口，确保 Obsidian 在前台
+      // 基础：使用标准 API 聚焦
       window.focus();
 
-      // 如果在 Electron 环境中，使用更强大的方法
-      const electronWindow = window as ElectronWindow;
-      if (electronWindow.require) {
-        try {
-          const electron = electronWindow.require<{ remote?: ElectronRemote }>("electron");
-          const remote = electron?.remote;
-          if (remote) {
-            const currentWindow = remote.getCurrentWindow();
-            if (currentWindow) {
-              let needsActivation = false;
-
-              // 如果窗口最小化，先还原
-              if (currentWindow.isMinimized()) {
-                currentWindow.restore();
-                this.debug("Window restored from minimized state");
-                needsActivation = true;
-              }
-
-              // 如果窗口不可见，显示窗口
-              if (!currentWindow.isVisible()) {
-                currentWindow.show();
-                this.debug("Window made visible");
-                needsActivation = true;
-              }
-
-              // 如果窗口不在前台（被其他窗口遮盖），激活它
-              if (!currentWindow.isFocused()) {
-                this.debug("Window is not focused, bringing to front");
-                needsActivation = true;
-              }
-
-              if (needsActivation) {
-                // 短暂置顶确保窗口在最前面
-                if (!currentWindow.isAlwaysOnTop()) {
-                  currentWindow.setAlwaysOnTop(true);
-                  // 等待置顶完成后恢复状态并resolve
-                  setTimeout(() => {
-                    currentWindow.setAlwaysOnTop(false);
-                    currentWindow.focus(); // 确保获得焦点
-                    resolve();
-                  }, 200);
-                } else {
-                  currentWindow.focus();
-                  setTimeout(resolve, 100);
-                }
-              } else {
-                // 窗口已经在前台，直接resolve
-                resolve();
-              }
-            } else {
-              resolve();
-            }
-          } else {
-            resolve();
-          }
-        } catch (error) {
-          this.debug("Failed to access Electron remote:", error);
-          resolve();
-        }
-      } else {
-        // 非Electron环境，等待短暂时间后resolve
-        setTimeout(resolve, 50);
-      }
+      // 尝试使用 Electron API 进行更强力的聚焦
+      this.tryElectronFocus().then(() => resolve()).catch((err) => {
+        this.debug("Electron focus failed, falling back to standard focus", err);
+        resolve();
+      });
     });
+  }
+
+  private async tryElectronFocus(): Promise<void> {
+    const electronWindow = window as ElectronWindow;
+    if (!electronWindow.require) {
+      return; // 非 Electron 环境
+    }
+
+    try {
+      const electron = electronWindow.require<{ remote?: ElectronRemote }>("electron");
+      const remote = electron?.remote;
+      
+      if (!remote) {
+        this.debug("Electron remote not available");
+        return;
+      }
+
+      const currentWindow = remote.getCurrentWindow();
+      if (!currentWindow) {
+        return;
+      }
+
+      let needsActivation = false;
+
+      // 如果窗口最小化，先还原
+      if (currentWindow.isMinimized()) {
+        currentWindow.restore();
+        this.debug("Window restored from minimized state");
+        needsActivation = true;
+      }
+
+      // 如果窗口不可见，显示窗口
+      if (!currentWindow.isVisible()) {
+        currentWindow.show();
+        this.debug("Window made visible");
+        needsActivation = true;
+      }
+
+      // 如果窗口不在前台（被其他窗口遮盖），激活它
+      if (!currentWindow.isFocused()) {
+        this.debug("Window is not focused, bringing to front");
+        needsActivation = true;
+      }
+
+      if (needsActivation) {
+        // 短暂置顶确保窗口在最前面
+        if (!currentWindow.isAlwaysOnTop()) {
+          currentWindow.setAlwaysOnTop(true);
+          // 等待置顶完成后恢复状态
+          await this.delay(200);
+          currentWindow.setAlwaysOnTop(false);
+          currentWindow.focus(); // 确保获得焦点
+        } else {
+          currentWindow.focus();
+          await this.delay(100);
+        }
+      }
+    } catch (error) {
+      this.debug("Error in tryElectronFocus:", error);
+      // 不抛出错误，保证流程继续
+    }
   }
 
   private focusModalElement(modalElement: HTMLElement) {
@@ -552,7 +550,6 @@ export default class ReminderFocusPlugin extends Plugin {
 
         // 如果聚焦失败，等待一小段时间后重试
         if (i < maxRetries - 1) {
-          this.debug(`Focus attempt ${i + 1} failed, retrying...`);
           await this.delay(50);
         }
       } catch (error) {
@@ -605,7 +602,7 @@ export default class ReminderFocusPlugin extends Plugin {
     }
 
     if (this.detectionTimer) {
-      clearInterval(this.detectionTimer);
+      window.clearInterval(this.detectionTimer);
       this.detectionTimer = null;
     }
 

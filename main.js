@@ -108,7 +108,7 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
       this.modalObserver = null;
     }
     if (this.detectionTimer) {
-      clearInterval(this.detectionTimer);
+      window.clearInterval(this.detectionTimer);
       this.detectionTimer = null;
     }
     this.focusedModals.clear();
@@ -116,24 +116,30 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
   }
   setupModalDetection() {
     this.modalObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        mutation.addedNodes.forEach((node) => {
-          if (node instanceof HTMLElement) {
-            this.checkForReminderModal(node);
+      for (const mutation of mutations) {
+        if (mutation.addedNodes.length > 0) {
+          for (let i = 0; i < mutation.addedNodes.length; i++) {
+            const node = mutation.addedNodes[i];
+            if (node instanceof HTMLElement) {
+              if (node.classList.contains("modal-container") || node.querySelector(".modal-container")) {
+                this.checkForReminderModal(node);
+              }
+            }
           }
-        });
-      });
+        }
+      }
     });
     this.modalObserver.observe(document.body, {
       childList: true,
       subtree: true
+      // 需要 subtree 因为 modal-container 可能不是直接子元素
     });
     this.detectionTimer = window.setInterval(() => {
       this.checkAllModals();
     }, this.settings.detectionInterval);
     this.registerInterval(this.detectionTimer);
     this.registerEvent(
-      this.app.workspace.on("window-open", (leaf, win) => {
+      this.app.workspace.on("window-open", () => {
         setTimeout(() => {
           this.checkAllModals();
         }, 100);
@@ -142,27 +148,28 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
     this.checkAllModals();
   }
   checkForReminderModal(element) {
-    const textContent = element.textContent || "";
-    const hasSnoozeButton = this.hasButtonWithText(element, "Snooze");
-    const hasDoneButton = this.hasButtonWithText(element, "Done");
-    const isReminderModal = element.classList.contains("modal-container") && this.isObsidianReminderModal(element, textContent, hasSnoozeButton, hasDoneButton);
-    if (isReminderModal) {
-      this.debug("Detected reminder modal");
-      this.handleReminderModal(element);
+    if (element.classList.contains("modal-container")) {
+      if (this.isObsidianReminderModal(element)) {
+        this.debug("Detected reminder modal (direct)");
+        this.handleReminderModal(element);
+      }
+    } else {
+      const modal = element.querySelector(".modal-container");
+      if (modal && this.isObsidianReminderModal(modal)) {
+        this.debug("Detected reminder modal (child)");
+        this.handleReminderModal(modal);
+      }
     }
   }
   checkAllModals() {
     const modals = document.querySelectorAll(".modal-container");
-    modals.forEach((modal) => {
-      if (modal instanceof HTMLElement) {
-        this.checkForReminderModal(modal);
-      }
-    });
+    for (let i = 0; i < modals.length; i++) {
+      this.checkForReminderModal(modals[i]);
+    }
   }
   handleReminderModal(modalElement) {
     const modalId = this.getModalId(modalElement);
     if (this.focusedModals.has(modalId)) {
-      this.debug(`Modal ${modalId} already focused, skipping`);
       return;
     }
     this.focusedModals.add(modalId);
@@ -177,7 +184,6 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
     observer.observe(modalElement.parentElement || document.body, {
       childList: true,
       subtree: true
-      // 确保能检测到深层变化
     });
     void this.focusModal(modalElement, modalId);
   }
@@ -212,17 +218,19 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
     }
     return false;
   }
-  isObsidianReminderModal(element, textContent, hasSnoozeButton, hasDoneButton) {
-    if (!hasSnoozeButton && !hasDoneButton && !element.querySelector("button")) {
+  isObsidianReminderModal(element) {
+    const textContent = element.textContent || "";
+    const buttons = element.querySelectorAll("button");
+    if (buttons.length === 0) {
       return false;
     }
-    const hasBothButtons = hasDoneButton && hasSnoozeButton;
-    if (hasBothButtons) {
+    const hasSnoozeButton = this.hasButtonWithText(element, "Snooze");
+    const hasDoneButton = this.hasButtonWithText(element, "Done");
+    if (hasDoneButton && hasSnoozeButton) {
       this.debug("Detected reminder modal: has both Done and Snooze buttons");
       return true;
     }
-    const hasReminderClass = element.querySelector(".reminder-modal") !== null || element.querySelector(".reminder-title") !== null || element.querySelector(".reminder-actions") !== null || element.querySelector(".reminder-file") !== null;
-    if (hasReminderClass) {
+    if (element.querySelector(".reminder-modal, .reminder-title, .reminder-actions, .reminder-file")) {
       this.debug("Detected reminder modal: has reminder CSS classes");
       return true;
     }
@@ -233,8 +241,7 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
       this.debug("Detected reminder modal: has reminder structure and buttons");
       return true;
     }
-    const hasReminderAriaLabel = element.querySelector('button[aria-label*="reminder"]') !== null || element.querySelector('[aria-label*="Remind me later"]') !== null || element.querySelector('[aria-label*="Mark as Done"]') !== null || element.querySelector('button[aria-label*="Done"]') !== null;
-    if (hasReminderAriaLabel) {
+    if (element.querySelector('button[aria-label*="reminder"]') || element.querySelector('[aria-label*="Remind me later"]') || element.querySelector('[aria-label*="Mark as Done"]') || element.querySelector('button[aria-label*="Done"]')) {
       this.debug("Detected reminder modal: has reminder aria-labels");
       return true;
     }
@@ -243,24 +250,19 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
       this.debug("Detected reminder modal: has specific button combination and time options");
       return true;
     }
-    const hasNotificationModalFeatures = element.querySelector(".mod-cta") !== null && // "Done" 按钮使用 mod-cta 类
-    element.querySelector("select.dropdown") !== null;
-    if (hasNotificationModalFeatures && (hasSnoozeButton || hasDoneButton)) {
+    if (element.querySelector(".mod-cta") && element.querySelector("select.dropdown") && (hasSnoozeButton || hasDoneButton)) {
       this.debug("Detected reminder modal: has NotificationModal features");
       return true;
     }
-    const hasFileLink = element.querySelector(".reminder-file") !== null || element.querySelector('button[aria-label*=".md"]') !== null || textContent.includes(".md") && (hasSnoozeButton || hasDoneButton);
-    if (hasFileLink) {
+    if (element.querySelector(".reminder-file") || element.querySelector('button[aria-label*=".md"]') || textContent.includes(".md") && (hasSnoozeButton || hasDoneButton)) {
       this.debug("Detected reminder modal: has file link");
       return true;
     }
-    const hasSvelteFeatures = element.querySelector("[data-svelte]") !== null || element.classList.toString().includes("svelte");
-    if (hasSvelteFeatures && (hasSnoozeButton || hasDoneButton)) {
+    if ((element.querySelector("[data-svelte]") || element.classList.toString().includes("svelte")) && (hasSnoozeButton || hasDoneButton)) {
       this.debug("Detected reminder modal: has Svelte features");
       return true;
     }
-    const hasBasicReminderIndicators = (textContent.includes("reminder") || textContent.includes("\u63D0\u9192")) && (hasSnoozeButton || hasDoneButton) && textContent.length < 2e3;
-    if (hasBasicReminderIndicators) {
+    if ((textContent.includes("reminder") || textContent.includes("\u63D0\u9192")) && (hasSnoozeButton || hasDoneButton) && textContent.length < 2e3) {
       this.debug("Detected reminder modal: has basic reminder indicators");
       return true;
     }
@@ -298,58 +300,57 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
   async ensureWindowVisible() {
     return new Promise((resolve) => {
       window.focus();
-      const electronWindow = window;
-      if (electronWindow.require) {
-        try {
-          const electron = electronWindow.require("electron");
-          const remote = electron?.remote;
-          if (remote) {
-            const currentWindow = remote.getCurrentWindow();
-            if (currentWindow) {
-              let needsActivation = false;
-              if (currentWindow.isMinimized()) {
-                currentWindow.restore();
-                this.debug("Window restored from minimized state");
-                needsActivation = true;
-              }
-              if (!currentWindow.isVisible()) {
-                currentWindow.show();
-                this.debug("Window made visible");
-                needsActivation = true;
-              }
-              if (!currentWindow.isFocused()) {
-                this.debug("Window is not focused, bringing to front");
-                needsActivation = true;
-              }
-              if (needsActivation) {
-                if (!currentWindow.isAlwaysOnTop()) {
-                  currentWindow.setAlwaysOnTop(true);
-                  setTimeout(() => {
-                    currentWindow.setAlwaysOnTop(false);
-                    currentWindow.focus();
-                    resolve();
-                  }, 200);
-                } else {
-                  currentWindow.focus();
-                  setTimeout(resolve, 100);
-                }
-              } else {
-                resolve();
-              }
-            } else {
-              resolve();
-            }
-          } else {
-            resolve();
-          }
-        } catch (error) {
-          this.debug("Failed to access Electron remote:", error);
-          resolve();
-        }
-      } else {
-        setTimeout(resolve, 50);
-      }
+      this.tryElectronFocus().then(() => resolve()).catch((err) => {
+        this.debug("Electron focus failed, falling back to standard focus", err);
+        resolve();
+      });
     });
+  }
+  async tryElectronFocus() {
+    const electronWindow = window;
+    if (!electronWindow.require) {
+      return;
+    }
+    try {
+      const electron = electronWindow.require("electron");
+      const remote = electron?.remote;
+      if (!remote) {
+        this.debug("Electron remote not available");
+        return;
+      }
+      const currentWindow = remote.getCurrentWindow();
+      if (!currentWindow) {
+        return;
+      }
+      let needsActivation = false;
+      if (currentWindow.isMinimized()) {
+        currentWindow.restore();
+        this.debug("Window restored from minimized state");
+        needsActivation = true;
+      }
+      if (!currentWindow.isVisible()) {
+        currentWindow.show();
+        this.debug("Window made visible");
+        needsActivation = true;
+      }
+      if (!currentWindow.isFocused()) {
+        this.debug("Window is not focused, bringing to front");
+        needsActivation = true;
+      }
+      if (needsActivation) {
+        if (!currentWindow.isAlwaysOnTop()) {
+          currentWindow.setAlwaysOnTop(true);
+          await this.delay(200);
+          currentWindow.setAlwaysOnTop(false);
+          currentWindow.focus();
+        } else {
+          currentWindow.focus();
+          await this.delay(100);
+        }
+      }
+    } catch (error) {
+      this.debug("Error in tryElectronFocus:", error);
+    }
   }
   focusModalElement(modalElement) {
     if (!modalElement.hasAttribute("tabindex")) {
@@ -368,7 +369,6 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
           return;
         }
         if (i < maxRetries - 1) {
-          this.debug(`Focus attempt ${i + 1} failed, retrying...`);
           await this.delay(50);
         }
       } catch (error) {
@@ -410,7 +410,7 @@ var ReminderFocusPlugin = class extends import_obsidian.Plugin {
       this.modalObserver = null;
     }
     if (this.detectionTimer) {
-      clearInterval(this.detectionTimer);
+      window.clearInterval(this.detectionTimer);
       this.detectionTimer = null;
     }
     this.setupModalDetection();
