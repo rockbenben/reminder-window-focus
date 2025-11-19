@@ -1,6 +1,6 @@
 {
   "name": "bring-reminders-front",
-  "version": "1.0.5",
+  "version": "1.0.6",
   "description": "Obsidian plugin to focus window when reminder appears",
   "main": "main.js",
   "scripts": {
